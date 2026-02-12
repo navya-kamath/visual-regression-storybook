@@ -49,68 +49,73 @@ jobs:
           path: playwright-report/
 
   update-screenshots:
-    if: |
-      github.event.issue.pull_request &&
-      contains(github.event.comment.body, '/update-screenshots')
-    runs-on: ubuntu-latest
+  if: |
+    github.event_name == 'issue_comment' &&
+    github.event.issue.pull_request != null &&
+    contains(github.event.comment.body, '/update-screenshots')
 
-    container:
-      image: mcr.microsoft.com/playwright:v1.41.1-jammy
+  runs-on: ubuntu-latest
 
-    steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+  container:
+    image: mcr.microsoft.com/playwright:v1.41.1-jammy
 
-      - name: React 👀 to trigger comment
-        uses: actions/github-script@v7
-        with:
-          script: |
-            await github.rest.reactions.createForIssueComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              comment_id: context.payload.comment.id,
-              content: "eyes"
-            });
+  steps:
+    - name: Checkout repo
+      uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Comment workflow run link
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const runUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+    - name: Configure Git safe directory
+      run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
-            await github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: `🤖 Updating visual regression screenshots...\n\n🔗 Workflow running here:\n${runUrl}`
-            });
+    - name: React 👀 to trigger comment
+      uses: actions/github-script@v7
+      with:
+        script: |
+          await github.rest.reactions.createForIssueComment({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            comment_id: context.payload.comment.id,
+            content: "eyes"
+          });
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
+    - name: Comment workflow run link
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const runUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
 
-      - name: Install dependencies
-        run: npm ci
+          await github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: `🤖 Updating visual regression screenshots...\n\n🔗 Workflow running here:\n${runUrl}`
+          });
 
-      - name: Build Storybook
-        run: npm run build-storybook
+    - name: Setup Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: 20
 
-      - name: Serve Storybook
-        run: npx serve storybook-static -l 6006 &
+    - name: Install dependencies
+      run: npm ci
 
-      - name: Wait for Storybook
-        run: npx wait-on http://localhost:6006
+    - name: Build Storybook
+      run: npm run build-storybook
 
-      - name: Update Visual Snapshots
-        run: npx playwright test --update-snapshots
+    - name: Serve Storybook
+      run: npx serve storybook-static -l 6006 &
 
-      - name: Commit Updated Screenshots
-        run: |
-          git config user.name "github-actions"
-          git config user.email "github-actions@github.com"
-          git add tests/**/*.png
-          git commit -m "chore: update visual regression snapshots" || echo "No changes"
-          git push
+    - name: Wait for Storybook
+      run: npx wait-on http://localhost:6006
+
+    - name: Update Visual Snapshots
+      run: npx playwright test --update-snapshots
+
+    - name: Commit Updated Screenshots
+      run: |
+        git config user.name "github-actions"
+        git config user.email "github-actions@github.com"
+        git add tests/**/*.png
+        git commit -m "chore: update visual regression snapshots" || echo "No changes"
+        git push
