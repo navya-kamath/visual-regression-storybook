@@ -6,4 +6,7 @@ export default defineConfig({
     viewport: { width: 800, height: 600 },
     screenshot: 'only-on-failure',
   },
+  reporter: [
+    ['json', { outputFile: 'playwright-report/results.json' }]
+  ]
 });

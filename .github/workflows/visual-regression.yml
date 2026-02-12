@@ -1,0 +1,114 @@
+name: Visual Regression Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  issue_comment:
+    types: [created]
+
+jobs:
+  visual-tests:
+    if: github.event_name != 'issue_comment'
+    runs-on: ubuntu-latest
+
+    container:
+      image: mcr.microsoft.com/playwright:v1.41.1-jammy
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Storybook
+        run: npm run build-storybook
+
+      - name: Serve Storybook
+        run: npx serve storybook-static -l 6006 &
+
+      - name: Wait for Storybook
+        run: npx wait-on http://localhost:6006
+
+      - name: Run Playwright Visual Tests
+        run: npx playwright test
+
+      - name: Run Custom HTML Coverage Script
+        run: bash visual-regression-html.sh
+
+      - name: Upload Playwright Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+
+  update-screenshots:
+    if: github.event_name == 'issue_comment' && contains(github.event.comment.body, '/update-screenshots')
+    runs-on: ubuntu-latest
+
+    container:
+      image: mcr.microsoft.com/playwright:v1.41.1-jammy
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: React 👀 to trigger comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.reactions.createForIssueComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: context.payload.comment.id,
+              content: "eyes"
+            });
+
+      - name: Comment workflow run link
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const runUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `🤖 Updating visual regression screenshots...\n\n🔗 Workflow running here:\n${runUrl}`
+            });
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Storybook
+        run: npm run build-storybook
+
+      - name: Serve Storybook
+        run: npx serve storybook-static -l 6006 &
+
+      - name: Wait for Storybook
+        run: npx wait-on http://localhost:6006
+
+      - name: Update Visual Snapshots
+        run: npx playwright test --update-snapshots
+
+      - name: Commit Updated Screenshots
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add tests/**/*.png
+          git commit -m "chore: update visual regression snapshots" || echo "No changes"
+          git push
