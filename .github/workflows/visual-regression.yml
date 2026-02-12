@@ -49,7 +49,9 @@ jobs:
           path: playwright-report/
 
   update-screenshots:
-    if: github.event_name == 'issue_comment' && contains(github.event.comment.body, '/update-screenshots')
+    if: |
+      github.event.issue.pull_request &&
+      contains(github.event.comment.body, '/update-screenshots')
     runs-on: ubuntu-latest
 
     container:
